@@ -5,12 +5,10 @@ import (
 	"net/url"
 )
 
-func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
-	baseURL, err := url.Parse(rawBaseURL)
-	if err != nil {
-		fmt.Printf("Error - crawlPage: couldn't parse URL '%s': %v\n", rawBaseURL, err)
-		return
-	}
+func (cfg *config) crawlPage(rawCurrentURL string) {
+	cfg.concurrencyControl <- struct{}{}
+	defer func() { <-cfg.concurrencyControl }()
+	defer cfg.wg.Done()
 
 	currentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
@@ -19,7 +17,7 @@ func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
 	}
 
 	// only crawl the current website
-	if currentURL.Hostname() != baseURL.Hostname() {
+	if currentURL.Hostname() != cfg.baseURL.Hostname() {
 		return
 	}
 
@@ -29,15 +27,10 @@ func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
 		return
 	}
 
-	// Check if the current URL exists in the map already (if it's already been crawled)
-	_, exists := pages[normalizedCurrentURL]
-	if exists{
-		pages[normalizedCurrentURL] += 1
+	isFirst := cfg.addPageVisit(normalizedCurrentURL)
+	if !isFirst {
 		return
 	}
-
-	// The current URL is new - create an entry to the map and set the count to 1
-	pages[normalizedCurrentURL] = 1
 
 	fmt.Printf("crawling: %s\n", rawCurrentURL)
 
@@ -51,13 +44,30 @@ func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
 	fmt.Println(htmlBody)
 
 	// Get the URLs from the HTML response body:
-	nextURLs, err := getURLsFromHTML(htmlBody, rawBaseURL)
+	nextURLs, err := getURLsFromHTML(htmlBody, cfg.baseURL.String())
 	if err != nil {
 		fmt.Printf("Error - getURLsFromHTML: %v", err)
 		return
 	}
 
 	for _, nextURL := range nextURLs {
-		crawlPage(rawBaseURL, nextURL, pages)
+		cfg.wg.Add(1)
+		go cfg.crawlPage(nextURL)
 	}
+}
+
+func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
+	// Check if the current URL exists in the map already (if it's already been crawled)
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	_, exists := cfg.pages[normalizedURL]
+	if exists{
+		cfg.pages[normalizedURL] += 1
+		return false
+	}
+
+	// The current URL is new - create an entry to the map and set the count to 1
+	cfg.pages[normalizedURL] = 1
+	return true
 }
