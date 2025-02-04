@@ -2,18 +2,8 @@ package main
 
 import (
 	"fmt"
-	"net/url"
 	"os"
-	"sync"
 )
-
-type config struct {
-	pages map[string]int
-	baseURL *url.URL
-	mu *sync.Mutex
-	concurrencyControl chan struct{}
-	wg *sync.WaitGroup
-}
 
 func main() {
 	args := os.Args
@@ -26,34 +16,23 @@ func main() {
 		fmt.Println("too many arguments provided")
 		os.Exit(1)
 	}
-	pages := make(map[string]int)
 
 	rawBaseURL := os.Args[1]
-	baseURL, err := url.Parse(rawBaseURL)
+	
+	const maxConcurrency = 5
+	cfg, err := configure(rawBaseURL, maxConcurrency)
 	if err != nil {
-		fmt.Printf("couldn't parse base URL: %v\n", err)
-		os.Exit(1)
-	}
-
-	const maxConcurrent = 5
-	concurrencyControl := make(chan struct{}, maxConcurrent)
-
-	cfg := config{
-		pages: pages,
-		baseURL: baseURL,
-		mu: &sync.Mutex{},
-		concurrencyControl: concurrencyControl,
-		wg: &sync.WaitGroup{},
+		fmt.Printf("couldn't configure: %v", err)
+		return
 	}
 
 	fmt.Printf("starting crawl of: %s\n", rawBaseURL)
 
 	cfg.wg.Add(1)
 	go cfg.crawlPage(rawBaseURL)
-
 	cfg.wg.Wait()
 
-	for normalizedURL, count := range pages {
+	for normalizedURL, count := range cfg.pages {
 		fmt.Printf("%d - %s\n", count, normalizedURL)
 	}
 }

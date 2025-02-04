@@ -55,19 +55,3 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		go cfg.crawlPage(nextURL)
 	}
 }
-
-func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
-	// Check if the current URL exists in the map already (if it's already been crawled)
-	cfg.mu.Lock()
-	defer cfg.mu.Unlock()
-
-	_, exists := cfg.pages[normalizedURL]
-	if exists{
-		cfg.pages[normalizedURL] += 1
-		return false
-	}
-
-	// The current URL is new - create an entry to the map and set the count to 1
-	cfg.pages[normalizedURL] = 1
-	return true
-}
