@@ -7,8 +7,14 @@ import (
 
 func (cfg *config) crawlPage(rawCurrentURL string) {
 	cfg.concurrencyControl <- struct{}{}
-	defer func() { <-cfg.concurrencyControl }()
-	defer cfg.wg.Done()
+	defer func() { 
+		<-cfg.concurrencyControl 
+		cfg.wg.Done()
+		}()
+
+	if cfg.pagesLen() >=  cfg.maxPages{
+		return
+	}
 
 	currentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
@@ -39,9 +45,6 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		fmt.Printf("Error getting HTML for %s: %v\n", normalizedCurrentURL, err)
 		return
 	}
-
-	// Print the HTML to watch the crawler in real-time. Change this to a subset for larger HTML documents
-	fmt.Println(htmlBody)
 
 	// Get the URLs from the HTML response body:
 	nextURLs, err := getURLsFromHTML(htmlBody, cfg.baseURL.String())
